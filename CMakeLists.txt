@@ -68,6 +68,8 @@ if( ${WSI} STREQUAL "USE_PLATFORM_GLFW" )
 	add_subdirectory( external/glfw )
 endif()
 
+add_subdirectory( external/glm )
+
 # HelloTriangle binary
 set_property( DIRECTORY PROPERTY VS_STARTUP_PROJECT HelloTriangle )
 file(GLOB SOURCE_HEADERS "src/*.h")
@@ -135,4 +137,4 @@ elseif( ${WSI} STREQUAL "VK_USE_PLATFORM_WAYLAND_KHR" )
 endif()
 add_definitions( -D${WSI} )
 
-target_link_libraries( HelloTriangle "${VULKAN_LIBRARY}" "${WSI_LIBS}" )
+target_link_libraries( HelloTriangle "${VULKAN_LIBRARY}" "${WSI_LIBS}" glm )

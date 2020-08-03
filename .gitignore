@@ -29,3 +29,6 @@
 /build32/
 /build64/
 /out/
+
+.idea/
+cmake-build-debug/

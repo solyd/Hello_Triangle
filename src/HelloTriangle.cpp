@@ -35,6 +35,11 @@ static_assert( VK_HEADER_VERSION >= REQUIRED_HEADER_VERSION, "Update your SDK! T
 #include "Wsi.h"
 
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include "glm/vec4.hpp"
+#include "glm/mat4x4.hpp"
+
 using std::exception;
 using std::runtime_error;
 using std::string;
@@ -436,7 +441,7 @@ int helloTriangle() try{
 			// kill oldSwapchain later, after it is potentially used by vkCreateSwapchainKHR
 		}
 
-		// creating new
+		// creating newg
 		if( swapchainCreatable ){
 			// reuses & destroys the oldSwapchain
 			swapchain = initSwapchain( physicalDevice, device, surface, surfaceFormat, capabilities, graphicsQueueFamily, presentQueueFamily, oldSwapchain );
@@ -614,10 +619,243 @@ int WINAPI WinMain( HINSTANCE, HINSTANCE, LPSTR, int ){
 	return helloTriangle();
 }
 #else
-int main(){
+int main2(){
 	return helloTriangle();
 }
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+const uint32_t WIDTH = 800;
+const uint32_t HEIGHT = 600;
+
+const bool enableValidationLayers = true;
+const std::vector<const char*> validationLayers = {
+  "VK_LAYER_KHRONOS_validation",
+  //VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+};
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL
+dbgCb(
+  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+  VkDebugUtilsMessageTypeFlagsEXT messageType,
+  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+  void* pUserData
+) {
+
+//  if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+//    // Message is important enough to show
+//  }
+
+  std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+  return VK_FALSE;
+}
+
+const char* checkLayerSupport(const std::vector<const char*>& layers) {
+  uint32_t layerCount;
+  vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+  std::vector<VkLayerProperties> availableLayers(layerCount);
+  vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+  for (const char* layerName : layers) {
+    bool layerFound = false;
+
+    for (const auto& layerProperties : availableLayers) {
+      if (strcmp(layerName, layerProperties.layerName) == 0) {
+        layerFound = true;
+        break;
+      }
+    }
+
+    if (!layerFound) {
+      return layerName;
+    }
+  }
+
+  return nullptr;
+}
+
+// smh
+template<typename ... Args>
+std::string strfmt( const std::string& format, Args ... args )
+{
+  size_t size = snprintf( nullptr, 0, format.c_str(), args ... ) + 1; // Extra space for '\0'
+  if( size <= 0 ){ throw std::runtime_error( "Error during formatting." ); }
+  std::unique_ptr<char[]> buf( new char[ size ] );
+  snprintf( buf.get(), size, format.c_str(), args ... );
+  return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
+}
+
+class HelloTriangleApplication {
+private:
+  GLFWwindow* window;
+  VkInstance instance;
+  VkDebugUtilsMessengerEXT debugMessenger;
+
+public:
+  void run() {
+    initVulkan();
+    mainLoop();
+    cleanup();
+  }
+
+private:
+  void initVulkan() {
+    glfwInit();
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
+    window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+
+    // actual vulkan stuff
+    createInstance();
+    setupDebugMessenger();
+  }
+
+  void setupDebugMessenger() {
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = dbgCb;
+    createInfo.pUserData = nullptr; // Optional
+  }
+
+  void printAvailableExtensions() {
+    // To retrieve a list of supported extensions before creating an instance,
+    // there's the vkEnumerateInstanceExtensionProperties function.
+
+    uint32_t extensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
+
+    std::cout << "available extensions:\n";
+    for (const auto& extension : extensions) {
+      std::cout << '\t' << extension.extensionName << '\n';
+    }
+  }
+
+  std::vector<const char *> mkExtensions() {
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions;
+    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+    if (enableValidationLayers) {
+      std::cout << "enabling validation layers...\n";
+      for (const auto& vl : validationLayers) {
+        std::cout << '\t' << vl << '\n';
+      }
+
+      auto missingLayer = checkLayerSupport(validationLayers);
+      if (missingLayer != nullptr) {
+        // TODO if the idea is to crash, this is fine but if not we've been naughty and haven't freed allocated stuff...
+        throw std::runtime_error(strfmt("no support for validation layer '%s'", missingLayer));
+      }
+
+      extensions.insert(extensions.end(), validationLayers.begin(), validationLayers.end());
+    }
+
+    return extensions; // its by copy
+  }
+
+  void createInstance() {
+    std::cout << "creating vk instance...\n";
+    printAvailableExtensions();
+
+
+    // 0000
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "No Engine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_0;
+
+    // This next struct is not optional and tells the Vulkan driver which global extensions and validation layers
+    // we want to use. Global here means that they apply to the entire program and not a specific device.
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    auto extensions = mkExtensions();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
+
+    // --
+
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create instance!");
+    }
+  }
+
+  void mainLoop() {
+    while (!glfwWindowShouldClose(window)) {
+      glfwPollEvents();
+    }
+  }
+
+  void cleanup() {
+    vkDestroyInstance(instance, nullptr);
+    glfwDestroyWindow(window);
+    glfwTerminate();
+  }
+};
+
+#define NO_TODO
+
+int main() {
+  HelloTriangleApplication app;
+
+  try {
+    app.run();
+  } catch (const std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  return EXIT_SUCCESS;
+}
+
+int main_extensionsCount() {
+  glfwInit();
+
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  GLFWwindow* window = glfwCreateWindow(800, 600, "Vulkan window", nullptr, nullptr);
+
+  uint32_t extensionCount = 0;
+  vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+
+  std::cout << extensionCount << " extensions supported\n";
+
+  glm::mat4 matrix;
+  glm::vec4 vec;
+  auto test = matrix * vec;
+
+  while(!glfwWindowShouldClose(window)) {
+    glfwPollEvents();
+  }
+
+  glfwDestroyWindow(window);
+
+  glfwTerminate();
+
+  return 0;
+}
+
+
+
 #endif
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 // Implementation
 //////////////////////////////////////////////////////////////////////////////////
